@@ -1,0 +1,108 @@
+import math 
+
+class Scheduler:
+    def step(self):
+        raise NotImplementedError
+    
+    def get_last_lr(self):
+        if hasattr(self.optimizer, "lr"):
+            return self.optimizer.lr
+        elif hasattr(self.optimizer, "param_groups"):
+            lr = [g["lr"] for g in self.optimizer.param_groups]
+            return lr
+        
+class LinearLRScheduler(Scheduler):
+    def __init__(self, optimizer, max_lr, min_lr=0.0, total_steps=1000, warmup_steps=0):
+
+        self.optimizer = optimizer
+        self.max_lr = max_lr
+        self.min_lr = min_lr
+        self.total_steps = total_steps
+        self.warmup_steps = warmup_steps
+        self.step_count = 0
+
+    def step(self):
+        self.step_count += 1
+
+        if self.step_count <= self.warmup_steps:
+            lr = self.max_lr * self.step_count / max(1, self.warmup_steps)
+        else:
+            progress = (self.step_count - self.warmup_steps) / max(1, self.total_steps - self.warmup_steps)
+            lr = self.max_lr - (self.max_lr - self.min_lr) * progress
+
+        self.optimizer._update_lr(lr)
+
+class ExponentialLRScheduler(Scheduler):
+    def __init__(self, optimizer, max_lr, gamma=0.99, warmup_steps=0):
+
+        self.optimizer = optimizer
+        self.base_lr = max_lr
+        self.gamma = gamma
+        self.warmup_steps = warmup_steps
+        self.step_count = 0
+
+    def step(self):
+        self.step_count += 1
+
+        if self.step_count <= self.warmup_steps:
+            lr = self.base_lr * self.step_count / max(1, self.warmup_steps)
+        else:
+            steps_since_warmup = self.step_count - self.warmup_steps
+            lr = self.base_lr * (self.gamma ** steps_since_warmup)
+
+        self.optimizer._update_lr(lr)
+    
+class CosineLRScheduler(Scheduler):
+    def __init__(self, optimizer, max_lr, min_lr=0.0, total_steps=1000, warmup_steps=0):
+
+        self.optimizer = optimizer
+        self.max_lr = max_lr
+        self.min_lr = min_lr
+        self.total_steps = total_steps
+        self.warmup_steps = warmup_steps
+        self.step_count = 0
+
+    def step(self):
+        self.step_count += 1
+
+        if self.step_count <= self.warmup_steps:
+            # Linear warmup
+            lr = self.max_lr * self.step_count / self.warmup_steps
+        else:
+            # Cosine decay
+            progress = (self.step_count - self.warmup_steps) / max(1, self.total_steps - self.warmup_steps)
+            lr = self.min_lr + 0.5 * (self.max_lr - self.min_lr) * (1 + math.cos(math.pi * progress))
+
+        # Update optimizer LR
+        self.optimizer._update_lr(lr)
+
+class StepLRScheduler(Scheduler):
+    def __init__(self, optimizer, initial_lr, step_size, gamma=0.1, warmup_steps=0):
+        """
+        Step learning rate scheduler.
+
+        initial_lr: starting LR
+        step_size: number of steps before decaying
+        gamma: multiplicative factor for decay
+        warmup_steps: number of steps to linearly increase LR at start
+        """
+        self.optimizer = optimizer
+        self.initial_lr = initial_lr
+        self.step_size = step_size
+        self.gamma = gamma
+        self.warmup_steps = warmup_steps
+        self.step_count = 0
+
+    def step(self):
+        self.step_count += 1
+
+        # Linear warmup
+        if self.step_count <= self.warmup_steps:
+            lr = self.initial_lr * self.step_count / max(1, self.warmup_steps)
+        else:
+            # Step decay
+            steps_since_warmup = self.step_count - self.warmup_steps
+            factor = self.gamma ** (steps_since_warmup // self.step_size)
+            lr = self.initial_lr * factor
+
+        self.optimizer._update_lr(lr)
